@@ -15,16 +15,14 @@
  */
 package com.alibaba.csp.sentinel.transport.heartbeat;
 
-import java.util.List;
-
 import com.alibaba.csp.sentinel.Constants;
 import com.alibaba.csp.sentinel.config.SentinelConfig;
-import com.alibaba.csp.sentinel.spi.SpiOrder;
-import com.alibaba.csp.sentinel.transport.config.TransportConfig;
 import com.alibaba.csp.sentinel.log.RecordLog;
+import com.alibaba.csp.sentinel.spi.SpiOrder;
+import com.alibaba.csp.sentinel.transport.HeartbeatSender;
+import com.alibaba.csp.sentinel.transport.config.TransportConfig;
 import com.alibaba.csp.sentinel.util.AppNameUtil;
 import com.alibaba.csp.sentinel.util.HostNameUtil;
-import com.alibaba.csp.sentinel.transport.HeartbeatSender;
 import com.alibaba.csp.sentinel.util.PidUtil;
 import com.alibaba.csp.sentinel.util.StringUtil;
 import com.alibaba.csp.sentinel.util.function.Tuple2;
@@ -36,14 +34,18 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
+import java.util.List;
+
 /**
  * @author Eric Zhao
- * @author leyou
+ * @author Carpenter Lee
  */
 @SpiOrder(SpiOrder.LOWEST_PRECEDENCE - 100)
 public class HttpHeartbeatSender implements HeartbeatSender {
 
     private final CloseableHttpClient client;
+
+    private static final int OK_STATUS = 200;
 
     private final int timeoutMs = 3000;
     private final RequestConfig requestConfig = RequestConfig.custom()
@@ -52,18 +54,21 @@ public class HttpHeartbeatSender implements HeartbeatSender {
         .setSocketTimeout(timeoutMs)
         .build();
 
-    private String consoleHost;
-    private int consolePort;
+    private final String consoleHost;
+    private final int consolePort;
 
     public HttpHeartbeatSender() {
         this.client = HttpClients.createDefault();
         List<Tuple2<String, Integer>> dashboardList = TransportConfig.getConsoleServerList();
         if (dashboardList == null || dashboardList.isEmpty()) {
-            RecordLog.info("[NettyHttpHeartbeatSender] No dashboard available");
+            RecordLog.info("[NettyHttpHeartbeatSender] No dashboard server available");
+            consoleHost = null;
+            consolePort = -1;
         } else {
             consoleHost = dashboardList.get(0).r1;
             consolePort = dashboardList.get(0).r2;
-            RecordLog.info("[NettyHttpHeartbeatSender] Dashboard address parsed: <" + consoleHost + ':' + consolePort + ">");
+            RecordLog.info(
+                "[NettyHttpHeartbeatSender] Dashboard address parsed: <" + consoleHost + ':' + consolePort + ">");
         }
     }
 
@@ -89,11 +94,27 @@ public class HttpHeartbeatSender implements HeartbeatSender {
         // Send heartbeat request.
         CloseableHttpResponse response = client.execute(request);
         response.close();
-        return true;
+        int statusCode = response.getStatusLine().getStatusCode();
+        if (statusCode == OK_STATUS) {
+            return true;
+        } else if (clientErrorCode(statusCode) || serverErrorCode(statusCode)) {
+            RecordLog.warn("[HttpHeartbeatSender] Failed to send heartbeat to "
+                + consoleHost + ":" + consolePort + ", http status code: " + statusCode);
+        }
+
+        return false;
     }
 
     @Override
     public long intervalMs() {
         return 5000;
+    }
+
+    private boolean clientErrorCode(int code) {
+        return code > 399 && code < 500;
+    }
+
+    private boolean serverErrorCode(int code) {
+        return code > 499 && code < 600;
     }
 }

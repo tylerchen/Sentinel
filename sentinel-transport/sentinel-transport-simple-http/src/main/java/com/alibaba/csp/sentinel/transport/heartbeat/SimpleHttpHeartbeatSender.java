@@ -15,25 +15,23 @@
  */
 package com.alibaba.csp.sentinel.transport.heartbeat;
 
-import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.List;
-
 import com.alibaba.csp.sentinel.log.RecordLog;
 import com.alibaba.csp.sentinel.transport.HeartbeatSender;
 import com.alibaba.csp.sentinel.transport.config.TransportConfig;
 import com.alibaba.csp.sentinel.transport.heartbeat.client.SimpleHttpClient;
 import com.alibaba.csp.sentinel.transport.heartbeat.client.SimpleHttpRequest;
 import com.alibaba.csp.sentinel.transport.heartbeat.client.SimpleHttpResponse;
-import com.alibaba.csp.sentinel.util.StringUtil;
 import com.alibaba.csp.sentinel.util.function.Tuple2;
+
+import java.net.InetSocketAddress;
+import java.util.List;
 
 /**
  * The heartbeat sender provides basic API for sending heartbeat request to provided target.
  * This implementation is based on a trivial HTTP client.
  *
  * @author Eric Zhao
- * @author leyou
+ * @author Carpenter Lee
  */
 public class SimpleHttpHeartbeatSender implements HeartbeatSender {
 
@@ -51,14 +49,18 @@ public class SimpleHttpHeartbeatSender implements HeartbeatSender {
     public SimpleHttpHeartbeatSender() {
         // Retrieve the list of default addresses.
         List<Tuple2<String, Integer>> newAddrs = TransportConfig.getConsoleServerList();
-        RecordLog.info("[SimpleHttpHeartbeatSender] Default console address list retrieved: " + newAddrs);
+        if (newAddrs.isEmpty()) {
+            RecordLog.warn("[SimpleHttpHeartbeatSender] Dashboard server address not configured or not available");
+        } else {
+            RecordLog.info("[SimpleHttpHeartbeatSender] Default console address list retrieved: " + newAddrs);
+        }
         this.addressList = newAddrs;
     }
 
     @Override
     public boolean sendHeartbeat() throws Exception {
         if (TransportConfig.getRuntimePort() <= 0) {
-            RecordLog.info("[SimpleHttpHeartbeatSender] Runtime port not initialized, won't send heartbeat");
+            RecordLog.info("[SimpleHttpHeartbeatSender] Command server port not initialized, won't send heartbeat");
             return false;
         }
         Tuple2<String, Integer> addrInfo = getAvailableAddress();
@@ -73,6 +75,9 @@ public class SimpleHttpHeartbeatSender implements HeartbeatSender {
             SimpleHttpResponse response = httpClient.post(request);
             if (response.getStatusCode() == OK_STATUS) {
                 return true;
+            } else if (clientErrorCode(response.getStatusCode()) || serverErrorCode(response.getStatusCode())) {
+                RecordLog.warn("[SimpleHttpHeartbeatSender] Failed to send heartbeat to " + addr
+                    + ", http status code: " + response.getStatusCode());
             }
         } catch (Exception e) {
             RecordLog.warn("[SimpleHttpHeartbeatSender] Failed to send heartbeat to " + addr, e);
@@ -96,4 +101,11 @@ public class SimpleHttpHeartbeatSender implements HeartbeatSender {
         return addressList.get(index);
     }
 
+    private boolean clientErrorCode(int code) {
+        return code > 399 && code < 500;
+    }
+
+    private boolean serverErrorCode(int code) {
+        return code > 499 && code < 600;
+    }
 }

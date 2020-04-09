@@ -15,17 +15,18 @@
  */
 package com.alibaba.csp.sentinel.transport.config;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.alibaba.csp.sentinel.config.SentinelConfig;
 import com.alibaba.csp.sentinel.log.RecordLog;
 import com.alibaba.csp.sentinel.util.HostNameUtil;
 import com.alibaba.csp.sentinel.util.StringUtil;
 import com.alibaba.csp.sentinel.util.function.Tuple2;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * @author leyou
+ * @author Carpenter Lee
+ * @author Jason Joo
  */
 public class TransportConfig {
 
@@ -66,7 +67,6 @@ public class TransportConfig {
         String config = SentinelConfig.getConfig(CONSOLE_SERVER);
         List<Tuple2<String, Integer>> list = new ArrayList<Tuple2<String, Integer>>();
         if (StringUtil.isBlank(config)) {
-            RecordLog.warn("Dashboard server address is not configured");
             return list;
         }
         
